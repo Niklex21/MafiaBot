@@ -8,7 +8,7 @@ players = dict()
 quantity = 0
 
 # --- CONSTANTS --- #
-BOT_TOKEN = "416682801:AAHygzvxHclVevhrwIufoUuNCAgJueh2GpI"
+BOT_TOKEN = ""  # Insert here your bot Token (can be received from @BotFather)
 REGISTRATION_TIME = 60  # In seconds
 
 updater = Updater(token=BOT_TOKEN)

@@ -6,36 +6,45 @@ game_state = False  # True - currently going, false - passive
 registration_state = False  # Same here
 players = dict()
 quantity = 0
+used = []
 
 # --- CONSTANTS --- #
-BOT_TOKEN = ""  # Insert here your bot Token (can be received from @BotFather)
+BOT_TOKEN = "416682801:AAHygzvxHclVevhrwIufoUuNCAgJueh2GpI"
 REGISTRATION_TIME = 60  # In seconds
+REQUIRED_PLAYERS = 1
+CARDS = ['mafia', 'innocent', 'detective', 'doctor']
 
 updater = Updater(token=BOT_TOKEN)
 dispatcher = updater.dispatcher
 
 
-def registration():
-    global registration_state
+class Player:
+    def __init__(self, user):
+        self.ID = user.id
+        self.name = user.first_name + ' ' + user.last_name
+        self.nick = user.username
+        self.card = None
+        self.is_alive = True
+        self.able_to_play_round = True
 
-    bot.send_message('Registration is active. To try your fortune, please send "/imin" command')
-    registration_state = True
 
+# Main
+def game(chat_id):
+    global game_state
 
-def start_game():
-    bot.send_message(chat_id=update.message.chat_id, text='Game is started. And may the strongest win.')
+    game_state = True
+    bot.send_message(chat_id=chat_id, text='Game is started. And may the strongest win.')
 
 
 # Starts on '/game'
-def game_command(bot, update):
+def registration_command(bot, update):
     global game_state
     global quantity
     global registration_state
     global players
 
-    if not game_state:
+    if not (game_state or registration_state):
         bot.send_message(chat_id=update.message.chat_id, text='And may the odds be ever in your favor')
-        game_state = True
         registration_state = True
 
         bot.send_message(chat_id=update.message.chat_id, text='Registration started. Call "/imin" to try your fortune')
@@ -50,13 +59,15 @@ def stop_command(bot, update):
     global quantity
     global players
 
-    if game_state:
+    if game_state or registration_state:
         bot.send_message(chat_id=update.message.chat_id, text='¡Sí, señor!')
+
         game_state = False
         registration_state = False
 
         quantity = 0
         players.clear()
+        used.clear()
 
         bot.send_message(chat_id=update.message.chat_id, text='Game aborted successfully.')
     else:
@@ -64,17 +75,23 @@ def stop_command(bot, update):
 
 
 # On '/imin'
-def reg_command(bot, update):
+def reg_player_command(bot, update):
     global registration_state
     global quantity
 
     if registration_state:
-        new_user = update.message.from_user
+        new_user = Player(update.message.from_user)
 
-        players[new_user.id] = new_user
+        if new_user.ID in used:
+            bot.send_message(chat_id=update.message.chat_id,
+                             text='You are already registered. Please wait for other players :)')
+            return
+
+        players[new_user.ID] = new_user
         quantity += 1
 
-        print(players[new_user.id].username)
+        print(players[new_user.ID].name)
+        used.append(new_user.ID)
     else:
         bot.send_message(chat_id=update.message.chat_id,
                          text='Registration is not active right now. Please call "/game" to start registration')
@@ -87,25 +104,27 @@ def start_command(bot, update):
     global game_state
 
     if game_state:
-        if registration_state:
-            if quantity > 4:
-                bot.send_message(chat_id=update.message.chat_id,
-                                 text='Registration was successful! Game is starting...')
-                start_game()
-            else:
-                bot.send_message(chat_id=update.message.chat_id,
-                                 text='\n'.join(['Too small amount of players :(',
-                                                 'Current amount of players: {}'.format(quantity),
-                                                 'Amount of players required: 5.']))
+        bot.send_message(chat_id=update.message.chat_id, text='Game is already running!')
+        return
+
+    if registration_state:
+        if quantity >= REQUIRED_PLAYERS:
+            bot.send_message(chat_id=update.message.chat_id,
+                             text='Registration was successful! Game is starting...')
+            registration_state = False
+            game(update.message.chat_id)
         else:
-            bot.send_message(chat_id=update.message.chat_id, text='Please call "/game" to begin the registration.')
+            bot.send_message(chat_id=update.message.chat_id,
+                             text='\n'.join(['Too small amount of players :(',
+                                             'Current amount of players: {}'.format(quantity),
+                                             'Amount of players required: {}.'.format(REQUIRED_PLAYERS)]))
     else:
-        bot.send_message(chat_id=update.message.chat_id, text='No game is currently active :(')
+        bot.send_message(chat_id=update.message.chat_id, text='Please call "/game" to begin the registration.')
 
 
-game_command_handler = CommandHandler('game', game_command)
+game_command_handler = CommandHandler('game', registration_command)
 stop_command_handler = CommandHandler('stop', stop_command)
-reg_command_handler = CommandHandler('imin', reg_command)
+reg_command_handler = CommandHandler('imin', reg_player_command)
 start_command_handler = CommandHandler('start', start_command)
 
 dispatcher.add_handler(game_command_handler)

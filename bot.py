@@ -31,7 +31,7 @@ OTHERS = ['maniac']
         5. Special mafiosi. Randomly selected from SPECIAL_MAFIOSI
         6. Individuals, such as maniac. Randomly selected from  OTHERS 
 '''
-QUANTITY_OF_ROLES = {1: '1 0 0 0 0 0', 2: '0 1 0 1 0 0', 3: '1 1 0 1 0 0', 4: '1 1 0 2 0 0', 5: '1 2 0 2 0 0',
+QUANTITY_OF_ROLES = {1: '0 0 0 1 0 0', 2: '0 0 0 2 0 0', 3: '1 1 0 1 0 0', 4: '1 1 0 2 0 0', 5: '1 2 0 2 0 0',
                      6: '1 3 0 2 0 0', 7: '1 3 1 2 0 0', 8: '1 3 1 2 1 0', 9: '1 4 1 2 1 0', 10: '1 5 1 2 1 0',
                      11: '1 5 1 2 1 1', 12: '1 5 2 2 1 1', 13: '1 6 2 2 1 1', 14: '1 6 2 3 1 1', 15: '1 7 2 3 1 1',
                      16: '1 7 2 4 1 1'}
@@ -74,7 +74,6 @@ class Player:
         self.is_alive = True
         self.able_to_play_round = True
         self.chat_id = None
-        self.user_class = user
 
 
 def distribute_roles():
@@ -131,7 +130,7 @@ def distribute_roles():
     for i in range(roles_q[3]):
         players[rand_players[ind]].card = 'Mafioso'
         roles['Mafioso'].append(rand_players[ind])
-        mafioso_list.append(rand_players[ind])
+        mafioso_list.append(players[rand_players[ind]].name)
         ind += 1
 
     print('Roles distribution finished:')
@@ -155,8 +154,8 @@ def send_roles(bot):
     for role, player in roles.items():
         if role == 'Mafioso':
             for pl in player:
-                bot.send_message(chat_id=pl, text='Other mafiosi:\n' + '\n'.join(mafioso_list))
                 bot.send_message(chat_id=pl, text=ROLE_GREETING[role])
+                bot.send_message(chat_id=pl, text='Other mafiosi: {}'.format(', '.join(mafioso_list)))
         elif role == 'Innocent':
             for pl in player:
                 bot.send_message(chat_id=pl, text=ROLE_GREETING[role])

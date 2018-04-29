@@ -6,11 +6,12 @@ import random
 game_state = False  # True - currently going, false - passive
 registration_state = False  # Same here
 players = dict()
-players_names = []
 quantity = 0
 used = []
 roles = dict()
 mafioso_list = []
+reg_message_id = None
+game_chat_id = None
 
 # --- CONSTANTS --- #
 BOT_TOKEN = "416682801:AAHygzvxHclVevhrwIufoUuNCAgJueh2GpI"
@@ -32,7 +33,7 @@ OTHERS = ['maniac']
         6. Individuals, such as maniac. Randomly selected from  OTHERS 
 '''
 QUANTITY_OF_ROLES = {1: '0 0 0 1 0 0', 2: '0 0 0 2 0 0', 3: '1 1 0 1 0 0', 4: '1 1 0 2 0 0', 5: '1 2 0 2 0 0',
-                     6: '1 3 0 2 0 0', 7: '1 3 1 2 0 0', 8: '1 3 1 2 1 0', 9: '1 4 1 2 1 0', 10: '1 5 1 2 1 0',
+                     6: '1 3 0 2 0 0', 7: '1 2 1 3 0 0', 8: '1 3 1 2 1 0', 9: '1 3 1 3 1 0', 10: '1 3 1 3 1 1',
                      11: '1 5 1 2 1 1', 12: '1 5 2 2 1 1', 13: '1 6 2 2 1 1', 14: '1 6 2 3 1 1', 15: '1 7 2 3 1 1',
                      16: '1 7 2 4 1 1'}
 ROLE_GREETING = {
@@ -67,8 +68,7 @@ dispatcher = updater.dispatcher
 class Player:
     def __init__(self, user):
         self.ID = user.id
-        self.name = user.first_name + ' ' + (
-            user.last_name if user.last_name else (user.username if user.username else ''))
+        self.name = user.first_name + (' ' + user.last_name if user.last_name else '')
         self.nick = user.username
         self.card = None
         self.is_alive = True
@@ -130,17 +130,18 @@ def distribute_roles():
     for i in range(roles_q[3]):
         players[rand_players[ind]].card = 'Mafioso'
         roles['Mafioso'].append(rand_players[ind])
-        mafioso_list.append(players[rand_players[ind]].name)
+        mafioso_list.append(
+            '[' + players[rand_players[ind]].name + ']' + '(tg://user?id=' + str(rand_players[ind]) + ')')
         ind += 1
 
-    print('Roles distribution finished:')
-    for key, value in roles.items():
-        if key == 'Mafioso':
-            print('Mafiosi: {}'.format(', '.join([players[i].name for i in value])))
-        elif key == 'Innocent':
-            print('Innocents: {}'.format(', '.join([players[i].name for i in value])))
-        else:
-            print(key + ': ' + players[value].name)
+        print('Roles distribution finished:')
+        for key, value in roles.items():
+            if key == 'Mafioso':
+                print('Mafiosi: {}'.format(', '.join([players[i].name for i in value])))
+            elif key == 'Innocent':
+                print('Innocents: {}'.format(', '.join([players[i].name for i in value])))
+            else:
+                print(key + ': ' + players[value].name)
 
 
 def send_roles(bot):
@@ -155,7 +156,9 @@ def send_roles(bot):
         if role == 'Mafioso':
             for pl in player:
                 bot.send_message(chat_id=pl, text=ROLE_GREETING[role])
-                bot.send_message(chat_id=pl, text='Other mafiosi: {}'.format(', '.join(mafioso_list)))
+                if len(mafioso_list) > 1:
+                    bot.send_message(chat_id=pl, text='Other mafiosi: {}'.format(
+                        ', '.join(i for i in mafioso_list if not (str(pl) in i))), parse_mode='Markdown')
         elif role == 'Innocent':
             for pl in player:
                 bot.send_message(chat_id=pl, text=ROLE_GREETING[role])
@@ -185,7 +188,8 @@ def registration_command(bot, update):
     global quantity
     global registration_state
     global players
-    global players_names
+    global reg_message_id
+    global game_chat_id
 
     if not (game_state or registration_state):
         bot.send_message(chat_id=update.message.chat_id, text='And may the odds be ever in your favor')
@@ -194,8 +198,12 @@ def registration_command(bot, update):
         keyboard = [[InlineKeyboardButton('Register!', url="https://t.me/goodgoosebot?start=Register")]]
         msg_markup = InlineKeyboardMarkup(keyboard)
 
-        bot.send_message(chat_id=update.message.chat_id, text='Current players: {}\nTotal: {}'.format(', '.join(
-            players_names), quantity), reply_markup=msg_markup)
+        reg_message_id = update.message.message_id + 2
+        game_chat_id = update.message.chat_id
+        bot.send_message(chat_id=update.message.chat_id, message_id=reg_message_id, text='*Registration is active!*',
+                         parse_mode="Markdown", reply_markup=msg_markup)
+
+        bot.pin_chat_message(chat_id=update.message.chat_id, message_id=reg_message_id, disable_notification=True)
     else:
         bot.send_message(chat_id=update.message.chat_id, text='Currently running')
 
@@ -206,16 +214,26 @@ def stop_command(bot, update):
     global registration_state
     global quantity
     global players
+    global mafioso_list
+    global roles
+    global reg_message_id
+    global registration_state
 
     if game_state or registration_state:
         bot.send_message(chat_id=update.message.chat_id, text='¡Sí, señor!')
+
+        if registration_state:
+            bot.delete_message(chat_id=update.message.chat_id, message_id=reg_message_id)
+            bot.delete_message(chat_id=update.message.chat_id, message_id=reg_message_id - 1)
 
         game_state = False
         registration_state = False
 
         quantity = 0
         players.clear()
+        roles.clear()
         used.clear()
+        mafioso_list.clear()
 
         bot.send_message(chat_id=update.message.chat_id, text='Game aborted successfully.')
     else:
@@ -226,7 +244,8 @@ def stop_command(bot, update):
 def reg_player_command(bot, update):
     global registration_state
     global quantity
-    global players_names
+    global reg_message_id
+    global game_chat_id
 
     if registration_state:
         new_user = Player(update.message.from_user)
@@ -240,8 +259,17 @@ def reg_player_command(bot, update):
         quantity += 1
 
         print('Player {}: {}, {}'.format(quantity, new_user.name, new_user.ID))
-        players_names.append(new_user.name)
         used.append(new_user.ID)
+
+        keyboard = [[InlineKeyboardButton('Register!', url="https://t.me/goodgoosebot?start=Register")]]
+        msg_markup = InlineKeyboardMarkup(keyboard)
+
+        bot.edit_message_text(chat_id=game_chat_id, message_id=reg_message_id,
+                              text='Registration is active!\n\n*Registered players:* \n{}\n\nTotal: *{}*'.format(
+                                  ', '.join(
+                                      ['[' + i.name + ']' + '(tg://user?id=' + str(i.ID) + ')' for _, i in
+                                       players.items()]),
+                                  str(quantity)), parse_mode="Markdown", reply_markup=msg_markup)
     else:
         bot.send_message(chat_id=update.message.chat_id,
                          text='Registration is not active right now. Please call "/game" to start registration')
@@ -253,6 +281,7 @@ def begin_game_command(bot, update):
     global registration_state
     global game_state
     global REQUIRED_PLAYERS
+    global reg_message_id
 
     if game_state:
         bot.send_message(chat_id=update.message.chat_id, text='Game is already running!')
@@ -263,6 +292,10 @@ def begin_game_command(bot, update):
             bot.send_message(chat_id=update.message.chat_id,
                              text='Registration was successful! Game is starting...')
             registration_state = False
+
+            bot.delete_message(chat_id=update.message.chat_id, message_id=reg_message_id)
+            bot.delete_message(chat_id=update.message.chat_id, message_id=reg_message_id - 1)
+
             game(bot, update.message.chat_id)
         else:
             bot.send_message(chat_id=update.message.chat_id,

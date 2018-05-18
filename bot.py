@@ -4,14 +4,15 @@ import random
 
 # --- GLOBALS --- #
 game_state = False  # True - currently going, false - passive
-registration_state = False  # Same here
-players = dict()
+registration_state = False  # True - currently going, false - passive
+players = dict()  # Key: ID of player, value: object of Player class
 quantity = 0
 used = []
-roles = dict()
+roles = dict()  # Key: role, value: ID of player
 mafioso_list = []
 reg_message_id = None
 game_chat_id = None
+last_message_id = dict()  # Key : id of player, value: last message id
 
 # --- CONSTANTS --- #
 BOT_TOKEN = "416682801:AAHygzvxHclVevhrwIufoUuNCAgJueh2GpI"
@@ -32,10 +33,11 @@ OTHERS = ['maniac']
         5. Special mafiosi. Randomly selected from SPECIAL_MAFIOSI
         6. Individuals, such as maniac. Randomly selected from  OTHERS 
 '''
-QUANTITY_OF_ROLES = {1: '0 0 0 1 0 0', 2: '0 0 0 2 0 0', 3: '1 1 0 1 0 0', 4: '1 1 0 2 0 0', 5: '1 2 0 2 0 0',
+QUANTITY_OF_ROLES = {1: '0 0 0 1 0 0', 2: '1 0 0 1 0 0', 3: '1 1 0 1 0 0', 4: '1 1 0 2 0 0', 5: '1 2 0 2 0 0',
                      6: '1 3 0 2 0 0', 7: '1 2 1 3 0 0', 8: '1 3 1 2 1 0', 9: '1 3 1 3 1 0', 10: '1 3 1 3 1 1',
                      11: '1 5 1 2 1 1', 12: '1 5 2 2 1 1', 13: '1 6 2 2 1 1', 14: '1 6 2 3 1 1', 15: '1 7 2 3 1 1',
                      16: '1 7 2 4 1 1'}
+ROLES_PRIORITY = ['prostitute', 'doctor', 'mafioso', 'detective', 'maniac', 'godfather', 'innocent']
 ROLE_GREETING = {
     "Detective": '\n'.join(["You are a Detective Dylan Burns. Your goal is to save innocents and to destroy mafiosi.",
                             "Your special ability is to check one's card or to kill somebody during the night.",
@@ -72,7 +74,10 @@ class Player:
         self.nick = user.username
         self.card = None
         self.is_alive = True
-        self.able_to_play_round = True
+        self.is_abilities_active = True
+        self.can_be_killed = True
+        self.able_to_vote = True
+        self.able_to_discuss = True
         self.chat_id = None
 
 
@@ -143,12 +148,20 @@ def distribute_roles():
             else:
                 print(key + ': ' + players[value].name)
 
+    # These ifs are for debug, as situation with no mafiosi/innocents is prohibited by the rules
+    if not roles['Mafioso']:
+        del roles['Mafioso']
+
+    if not roles['Innocent']:
+        del roles['Innocent']
+
 
 def send_roles(bot):
     global roles
     global mafioso_list
     global players
     global ROLE_GREETING
+    global last_message_id
 
     print('Sending roles...')
 
@@ -157,15 +170,61 @@ def send_roles(bot):
             for pl in player:
                 bot.send_message(chat_id=pl, text=ROLE_GREETING[role])
                 if len(mafioso_list) > 1:
-                    bot.send_message(chat_id=pl, text='Other mafiosi: {}'.format(
-                        ', '.join(i for i in mafioso_list if not (str(pl) in i))), parse_mode='Markdown')
+                    bot.send_message(chat_id=pl, text='Other mafiosi: \n{}'.format(
+                        '\n'.join(i for i in mafioso_list if not (str(pl) in i))),
+                                     parse_mode='Markdown')
+                last_message_id[pl] += 1
         elif role == 'Innocent':
             for pl in player:
                 bot.send_message(chat_id=pl, text=ROLE_GREETING[role])
+                last_message_id[pl] += 1
         else:
             bot.send_message(chat_id=player, text=ROLE_GREETING[role])
+            last_message_id[player] += 1
 
     print('Roles were sent successfully')
+
+
+# Role functions
+# IMPORTANT: name functions as roles, in lowercase
+def detective(bot):
+    global roles
+    global players
+
+    print('Detective woke up')
+
+    check_or_shoot = InlineKeyboardMarkup(
+        [[InlineKeyboardButton('Shoot', callback_data='detective_shoot'),
+          InlineKeyboardButton('Check identity', callback_data='detective_check')]])
+
+    bot.send_message(chat_id=roles['Detective'], text='Are you feeling pacifistic tonight?',
+                     reply_markup=check_or_shoot)
+    last_message_id[roles['Detective']] += 1
+
+
+def mafioso(bot):
+    global roles
+    global players
+    global mafioso_list
+
+    print('Mafiosi woke up')
+
+    shoot_voting = []
+    for role, _id in roles.items():
+        if role == 'Innocent':
+            for inn in _id:
+                shoot_voting.append([InlineKeyboardButton(players[inn].name, callback_data='maf_kill:{}'.format(inn))])
+        elif role != 'Mafioso':
+            shoot_voting.append([InlineKeyboardButton(players[_id].name, callback_data='maf_kill:{}'.format(_id))])
+
+    for i in roles['Mafioso']:
+        bot.send_message(chat_id=i, text='Choose a target properly',
+                         reply_markup=InlineKeyboardMarkup(shoot_voting))
+        last_message_id[i] += 1
+
+
+def innocent():
+    print('Innocents are still asleep!')
 
 
 # Main
@@ -173,6 +232,7 @@ def game(bot, chat_id):
     global game_state
     global players
     global roles
+    global ROLES_PRIORITY
 
     game_state = True
     print('Game started')
@@ -180,6 +240,12 @@ def game(bot, chat_id):
 
     distribute_roles()
     send_roles(bot)
+
+    ordered_roles = sorted(roles.keys(),
+                           key=lambda x: ROLES_PRIORITY.index(x.lower()))
+
+    for i in ordered_roles:
+        exec(i.lower() + '(bot)')  # Functions for each role are named identically to roles themselves
 
 
 # Starts on '/game'
@@ -200,7 +266,7 @@ def registration_command(bot, update):
 
         reg_message_id = update.message.message_id + 2
         game_chat_id = update.message.chat_id
-        bot.send_message(chat_id=update.message.chat_id, message_id=reg_message_id, text='*Registration is active!*',
+        bot.send_message(chat_id=update.message.chat_id, text='*Registration is active!*',
                          parse_mode="Markdown", reply_markup=msg_markup)
 
         bot.pin_chat_message(chat_id=update.message.chat_id, message_id=reg_message_id, disable_notification=True)
@@ -246,6 +312,7 @@ def reg_player_command(bot, update):
     global quantity
     global reg_message_id
     global game_chat_id
+    global last_message_id
 
     if registration_state:
         new_user = Player(update.message.from_user)
@@ -259,6 +326,8 @@ def reg_player_command(bot, update):
         quantity += 1
 
         print('Player {}: {}, {}'.format(quantity, new_user.name, new_user.ID))
+
+        last_message_id[new_user.ID] = update.message.message_id
         used.append(new_user.ID)
 
         keyboard = [[InlineKeyboardButton('Register!', url="https://t.me/goodgoosebot?start=Register")]]

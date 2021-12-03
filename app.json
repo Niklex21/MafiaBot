@@ -1,0 +1,22 @@
+{
+  "name": "Chatbot",
+  "description": "Open-Source bot for Aichat bot",
+  "logo": "https://te.legra.ph/file/7dcf2d9f705f95a5a521f.jpg",
+  "keywords": ["aichatbot", "chatbot", "telegram"],
+  "repository": "https://github.com/Itsunknown-12/Chatbot",
+  "buildpacks": [{
+  "url": "heroku/python"
+  }],
+  "formation": {
+  "worker": {
+  "quantity": 1,
+  "size": "free"
+        }
+    },
+  "env": {
+    "BOT_TOKEN": {
+      "description": "A Bot Token from @BotFather",
+      "required": true
+    }
+  }
+}
